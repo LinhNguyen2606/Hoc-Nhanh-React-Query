@@ -1,7 +1,7 @@
-import { keepPreviousData, useMutation, useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useQueryString } from 'hooks/useQueryString'
 import { Link } from 'react-router-dom'
-import { deleteStudent, getStudents } from 'utils/api'
+import { deleteStudent, getStudent, getStudents } from 'utils/api'
 import classNames from 'classnames'
 import { toast } from 'react-toastify'
 
@@ -10,22 +10,34 @@ const LIMIT = 10
 export default function Students() {
   const queryString = useQueryString()
   const page = Number(queryString.page) || 1
+  const queryClient = useQueryClient()
 
   const studentsQuery = useQuery({
     queryKey: ['students', page],
     queryFn: () => getStudents(page, LIMIT),
-    placeholderData: keepPreviousData
+    placeholderData: keepPreviousData,
+    staleTime: 10 * 1000
   })
 
   const deleteStudentMutation = useMutation({
     mutationFn: (id: string | number) => deleteStudent(id),
-    onSuccess: (_, id) => toast.success(`Delete student with id = ${id} successfully!`)
+    onSuccess: (_, id) => {
+      queryClient.invalidateQueries({ queryKey: ['students', page], exact: true })
+      toast.success(`Delete student with id = ${id} successfully!`)
+    }
   })
 
   const totalStudentsCount = Number(studentsQuery.data?.headers['x-total-count'] || 0)
   const totalPages = Math.ceil(totalStudentsCount / LIMIT)
 
   const handleDelete = (id: string | number) => deleteStudentMutation.mutate(id)
+
+  const handlePreFetchQuery = (id: number) =>
+    queryClient.prefetchQuery({
+      queryKey: ['student', String(id)],
+      queryFn: () => getStudent(id),
+      staleTime: 10 * 1000
+    })
 
   return (
     <div>
@@ -82,6 +94,7 @@ export default function Students() {
                   <tr
                     key={student.id}
                     className='border-b bg-white hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-600'
+                    onMouseEnter={() => handlePreFetchQuery(student.id)}
                   >
                     <td className='py-4 px-6'>{student.id}</td>
                     <td className='py-4 px-6'>
